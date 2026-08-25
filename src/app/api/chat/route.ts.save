@@ -1,0 +1,49 @@
+import { NextRequest, NextResponse } m "next/server";
+import { GoogleGenAI } from "@google/genai";
+import { searchDocumentChunks } from "../../../../lib/retrieval/search";
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const question = body?.question?.trim();
+
+    if (!question) {
+      return NextResponse.json(
+        { error: "Question is required." },
+        { status: 400 }
+      );
+    }
+
+    const results = await searchDocumentChunks(question, 5);
+
+    if (!results.length) {
+      return NextResponse.json({
+                  "I couldn't find relevant information in the available official sources.",
+        sources: [],
+      });
+    }
+
+    const context = results
+      .map(
+        (result, index) =>
+          `[SOURCE ${index + 1}]
+Title: ${result.source_title}
+URL: ${result.source_url}
+Content:
+${result.content}`
+      )
+      .join("\n\n
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is not configured.");
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `
+You are a factual mutual-fund information assistant.
+
+Answer the user's question using ONLY
